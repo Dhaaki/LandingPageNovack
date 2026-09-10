@@ -92,20 +92,33 @@ function initCarousel() {
   var startX = null;
   var deltaX = 0;
   var dragging = false;
+  var activePointerId = null;
 
   track.addEventListener('pointerdown', function (e) {
     dragging = true;
     startX = e.clientX;
     deltaX = 0;
+    activePointerId = e.pointerId;
+    // Pointer capture keeps move/up events targeted at the track even if the
+    // finger drifts outside its bounds mid-swipe — without it, touch drags
+    // fire a premature pointerleave/cancel before reaching the threshold.
+    if (track.setPointerCapture) {
+      try { track.setPointerCapture(e.pointerId); } catch (err) {}
+    }
     stopAutoplay();
   });
   track.addEventListener('pointermove', function (e) {
-    if (!dragging) return;
+    if (!dragging || e.pointerId !== activePointerId) return;
     deltaX = e.clientX - startX;
   });
-  function endDrag() {
+  function endDrag(e) {
     if (!dragging) return;
+    if (e && e.pointerId !== activePointerId) return;
     dragging = false;
+    if (track.releasePointerCapture && activePointerId !== null) {
+      try { track.releasePointerCapture(activePointerId); } catch (err) {}
+    }
+    activePointerId = null;
     var threshold = 50;
     if (deltaX > threshold) prev();
     else if (deltaX < -threshold) next();
@@ -115,7 +128,6 @@ function initCarousel() {
   }
   track.addEventListener('pointerup', endDrag);
   track.addEventListener('pointercancel', endDrag);
-  track.addEventListener('pointerleave', function () { if (dragging) endDrag(); });
 
   render();
   startAutoplay();
