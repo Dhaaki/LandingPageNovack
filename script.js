@@ -24,37 +24,48 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   desktopQuery.addEventListener('change', closeOnDesktop);
 
-  initCarousel();
+  initMainCarousel();
+  initGalleries();
 });
 
-function initCarousel() {
-  var root = document.querySelector('[data-carousel]');
-  if (!root) return;
-
-  var track = root.querySelector('[data-carousel-track]');
+// Generic swipeable carousel: pointer-capture drag, optional autoplay,
+// optional arrows/dots. Used for the top-level product carousel and for
+// each product's nested photo gallery.
+function createCarousel(config) {
+  var root = config.root;
+  var track = config.track;
+  if (!track) return null;
   var slides = Array.prototype.slice.call(track.children);
-  var dotsWrap = root.querySelector('[data-carousel-dots]');
-  var prevBtn = document.querySelector('[data-carousel-prev]');
-  var nextBtn = document.querySelector('[data-carousel-next]');
-  if (slides.length < 2) return;
+  if (slides.length < 2) return null;
 
-  var AUTOPLAY_MS = 5000;
+  var dotsWrap = config.dotsWrap || null;
+  var prevBtn = config.prevBtn || null;
+  var nextBtn = config.nextBtn || null;
+  var autoplay = !!config.autoplay;
+  var autoplayMs = config.autoplayMs || 5000;
+  var stopPropagationOnDrag = !!config.stopPropagationOnDrag;
+  var dotAriaLabel = config.dotAriaLabel || 'Ir para item ';
+
   var index = 0;
   var timer = null;
   var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var dots = slides.map(function (_, i) {
-    var dot = document.createElement('button');
-    dot.type = 'button';
-    dot.className = 'carousel-dot';
-    dot.setAttribute('aria-label', 'Ir para equipamento ' + (i + 1));
-    dot.addEventListener('click', function () {
-      goTo(i);
-      restartAutoplay();
+  var dots = [];
+  if (dotsWrap) {
+    dots = slides.map(function (_, i) {
+      var dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'carousel-dot';
+      dot.setAttribute('aria-label', dotAriaLabel + (i + 1));
+      dot.addEventListener('click', function (e) {
+        if (stopPropagationOnDrag) e.stopPropagation();
+        goTo(i);
+        restartAutoplay();
+      });
+      dotsWrap.appendChild(dot);
+      return dot;
     });
-    dotsWrap.appendChild(dot);
-    return dot;
-  });
+  }
 
   function render() {
     track.style.transform = 'translateX(-' + (index * 100) + '%)';
@@ -71,22 +82,32 @@ function initCarousel() {
   function prev() { goTo(index - 1); }
 
   function startAutoplay() {
-    if (reducedMotion) return;
+    if (!autoplay || reducedMotion) return;
     stopAutoplay();
-    timer = setInterval(next, AUTOPLAY_MS);
+    timer = setInterval(next, autoplayMs);
   }
   function stopAutoplay() {
     if (timer) { clearInterval(timer); timer = null; }
   }
   function restartAutoplay() { startAutoplay(); }
 
-  if (prevBtn) prevBtn.addEventListener('click', function () { prev(); restartAutoplay(); });
-  if (nextBtn) nextBtn.addEventListener('click', function () { next(); restartAutoplay(); });
+  if (prevBtn) prevBtn.addEventListener('click', function (e) {
+    if (stopPropagationOnDrag) e.stopPropagation();
+    prev();
+    restartAutoplay();
+  });
+  if (nextBtn) nextBtn.addEventListener('click', function (e) {
+    if (stopPropagationOnDrag) e.stopPropagation();
+    next();
+    restartAutoplay();
+  });
 
-  root.addEventListener('mouseenter', stopAutoplay);
-  root.addEventListener('mouseleave', startAutoplay);
-  root.addEventListener('focusin', stopAutoplay);
-  root.addEventListener('focusout', startAutoplay);
+  if (autoplay && root) {
+    root.addEventListener('mouseenter', stopAutoplay);
+    root.addEventListener('mouseleave', startAutoplay);
+    root.addEventListener('focusin', stopAutoplay);
+    root.addEventListener('focusout', startAutoplay);
+  }
 
   // Swipe / drag support
   var startX = null;
@@ -95,6 +116,10 @@ function initCarousel() {
   var activePointerId = null;
 
   track.addEventListener('pointerdown', function (e) {
+    // A gallery nested inside another carousel must stop this event from
+    // bubbling to the outer track's own pointerdown — otherwise one touch
+    // drag would drive both carousels at once.
+    if (stopPropagationOnDrag) e.stopPropagation();
     dragging = true;
     startX = e.clientX;
     deltaX = 0;
@@ -108,10 +133,12 @@ function initCarousel() {
     stopAutoplay();
   });
   track.addEventListener('pointermove', function (e) {
+    if (stopPropagationOnDrag) e.stopPropagation();
     if (!dragging || e.pointerId !== activePointerId) return;
     deltaX = e.clientX - startX;
   });
   function endDrag(e) {
+    if (stopPropagationOnDrag && e) e.stopPropagation();
     if (!dragging) return;
     if (e && e.pointerId !== activePointerId) return;
     dragging = false;
@@ -131,4 +158,37 @@ function initCarousel() {
 
   render();
   startAutoplay();
+
+  return { goTo: goTo, next: next, prev: prev };
+}
+
+function initMainCarousel() {
+  var root = document.querySelector('[data-carousel]');
+  if (!root) return;
+  createCarousel({
+    root: root,
+    track: root.querySelector('[data-carousel-track]'),
+    dotsWrap: root.querySelector('[data-carousel-dots]'),
+    prevBtn: document.querySelector('[data-carousel-prev]'),
+    nextBtn: document.querySelector('[data-carousel-next]'),
+    autoplay: true,
+    autoplayMs: 5000,
+    stopPropagationOnDrag: false,
+    dotAriaLabel: 'Ir para equipamento '
+  });
+}
+
+function initGalleries() {
+  document.querySelectorAll('[data-gallery]').forEach(function (galleryRoot) {
+    createCarousel({
+      root: galleryRoot,
+      track: galleryRoot.querySelector('[data-gallery-track]'),
+      dotsWrap: galleryRoot.querySelector('[data-gallery-dots]'),
+      prevBtn: galleryRoot.querySelector('[data-gallery-prev]'),
+      nextBtn: galleryRoot.querySelector('[data-gallery-next]'),
+      autoplay: false,
+      stopPropagationOnDrag: true,
+      dotAriaLabel: 'Ir para foto '
+    });
+  });
 }
