@@ -109,6 +109,18 @@ function createCarousel(config) {
     root.addEventListener('focusout', startAutoplay);
   }
 
+  if (stopPropagationOnDrag && root) {
+    // Arrows and dots live in `root` but outside `track`, so their own
+    // pointerdown still bubbles past this carousel straight to the outer
+    // one — which then calls setPointerCapture on itself and hijacks the
+    // button's pointerup, so its synthesized click never fires. Stopping
+    // propagation at the root catches every pointer event from any child
+    // (track, arrows, dots) before it can reach an ancestor carousel.
+    ['pointerdown', 'pointerup', 'pointercancel'].forEach(function (type) {
+      root.addEventListener(type, function (e) { e.stopPropagation(); });
+    });
+  }
+
   // Swipe / drag support
   var startX = null;
   var deltaX = 0;
